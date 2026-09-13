@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Windows 11 RTKLIB NTRIP Caster with Tailscale</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.75in;
+    }
+    body {
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.45;
+      color: #1a1a1a;
+      max-width: 7.5in;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 18pt;
+      margin: 0 0 0.35em;
+      border-bottom: 2px solid #1a1a1a;
+      padding-bottom: 0.25em;
+    }
+    .subtitle {
+      color: #444;
+      margin: 0 0 1.25em;
+      font-size: 10.5pt;
+    }
+    h2 {
+      font-size: 13pt;
+      margin: 1.35em 0 0.45em;
+      page-break-after: avoid;
+    }
+    p, li {
+      margin: 0.35em 0;
+    }
+    ol, ul {
+      margin: 0.4em 0 0.8em;
+      padding-left: 1.35em;
+    }
+    code, .mono {
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 9.5pt;
+    }
+    pre {
+      background: #f4f4f4;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 0.7em 0.85em;
+      overflow-x: auto;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 9pt;
+      line-height: 1.4;
+      page-break-inside: avoid;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0.6em 0 1em;
+      font-size: 10.5pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.4em 0.55em;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f0f0f0;
+      font-weight: 600;
+    }
+    .note {
+      background: #f7f7f7;
+      border-left: 3px solid #666;
+      padding: 0.55em 0.75em;
+      margin: 0.8em 0;
+      page-break-inside: avoid;
+    }
+    .footer {
+      margin-top: 2em;
+      padding-top: 0.6em;
+      border-top: 1px solid #ccc;
+      font-size: 9pt;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>Windows 11 RTKLIB NTRIP Caster with Tailscale</h1>
+  <p class="subtitle">
+    Suggested workflow for delivering RTCM GNSS corrections from a Windows 11 base
+    station using RTKLIB (Demo5 / rtkexplorer) as an NTRIP caster and Tailscale as the VPN.
+  </p>
+
+  <h2>1. Overview</h2>
+  <p>
+    Use <strong>rtklibexplorer / Demo5</strong> RTKLIB (not stock RTKLIB). Only that build’s
+    <span class="mono">str2str</span> / <span class="mono">strsvr</span> can act as an NTRIP
+    <strong>caster</strong> (<span class="mono">ntripc://</span>). Tailscale gives rovers a
+    stable VPN IP without router port-forwarding or a public IP.
+  </p>
+
+  <h2>2. Base station → Windows</h2>
+  <ol>
+    <li>Mount the base with a known ECEF/LLH position (surveyed, not autonomous).</li>
+    <li>Output <strong>RTCM3</strong> on serial/USB. Prefer RTCM-only (avoid mixing UBX/NMEA if possible).</li>
+    <li>
+      Typical messages:
+      <strong>1005/1006</strong> (base position) + MSM or legacy observations
+      (<strong>1074/1084/1094/1124</strong> or <strong>1004/1012</strong>), plus
+      <strong>1033</strong> if you want antenna/receiver info.
+    </li>
+    <li>Note the COM port and baud rate (for example <span class="mono">COM3</span>, <span class="mono">115200</span>).</li>
+  </ol>
+
+  <h2>3. Install RTKLIB (Demo5) and Tailscale</h2>
+  <ol>
+    <li>
+      Download Windows binaries from
+      <span class="mono">https://github.com/rtklibexplorer/RTKLIB/releases</span>.
+    </li>
+    <li>
+      Install Tailscale on the base PC and on every rover machine, phone, or field tablet that
+      will pull corrections (<span class="mono">https://tailscale.com</span>).
+    </li>
+    <li>
+      Log all devices into the <strong>same Tailnet</strong>. On the base PC, note its Tailscale IP
+      (<span class="mono">100.x.y.z</span>) from the Tailscale tray icon or
+      <span class="mono">tailscale ip -4</span>.
+    </li>
+  </ol>
+
+  <h2>4. Run the NTRIP caster</h2>
+  <p><strong>CLI (<span class="mono">str2str</span>)</strong> — from PowerShell in the RTKLIB <span class="mono">bin</span> folder:</p>
+  <pre>str2str -in serial://COM3:115200:8:n:1:off -out ntripc://:2101/BASE</pre>
+
+  <p>With basic authentication (recommended on a shared Tailnet):</p>
+  <pre>str2str -in serial://COM3:115200:8:n:1:off -out ntripc://user:pass@:2101/BASE</pre>
+
+  <p>Meaning:</p>
+  <ul>
+    <li>Input: base RTCM on <span class="mono">COM3</span></li>
+    <li>Output: local NTRIP caster on TCP <strong>2101</strong>, mountpoint <strong>BASE</strong></li>
+    <li>Empty host before <span class="mono">:2101</span> means listen on all interfaces (including Tailscale)</li>
+  </ul>
+
+  <p>
+    <strong>GUI alternative:</strong> open <span class="mono">strsvr</span>, set Input = Serial
+    (COM + baud), Output = <strong>NTRIP Caster</strong>, port <span class="mono">2101</span>,
+    mountpoint <span class="mono">BASE</span>, optional user/password, then Start.
+  </p>
+  <p>Keep that window or process running while you need corrections.</p>
+
+  <h2>5. Windows Firewall</h2>
+  <ol>
+    <li>
+      Windows Security → Firewall → Advanced settings → Inbound Rule → Port → TCP
+      <span class="mono">2101</span>
+    </li>
+    <li>
+      Prefer scoping the rule to the Tailscale adapter or
+      <span class="mono">100.64.0.0/10</span> so the caster is not exposed on LAN/Wi‑Fi.
+    </li>
+    <li>
+      Confirm Tailscale is Connected and that Tailnet ACLs do not block inbound connections to
+      the base PC (default Tailnets usually allow device-to-device).
+    </li>
+  </ol>
+
+  <h2>6. Rover / client connection</h2>
+  <p>On any Tailscale-connected device, point the NTRIP client at:</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Caster host</td>
+        <td>Base Tailscale IP, e.g. <span class="mono">100.x.y.z</span></td>
+      </tr>
+      <tr>
+        <td>Port</td>
+        <td><span class="mono">2101</span></td>
+      </tr>
+      <tr>
+        <td>Mountpoint</td>
+        <td><span class="mono">BASE</span> (case-sensitive)</td>
+      </tr>
+      <tr>
+        <td>User / password</td>
+        <td>Same as caster, or dummy values if auth is disabled</td>
+      </tr>
+      <tr>
+        <td>Format</td>
+        <td>RTCM3</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>RTKLIB client example:</p>
+  <pre>str2str -in ntrip://user:pass@100.x.y.z:2101/BASE -out tcpsvr://:9000</pre>
+
+  <p>
+    Or configure <span class="mono">rtknavi</span> / the receiver’s built-in NTRIP client with
+    host = Tailscale IP and mount = <span class="mono">BASE</span>.
+  </p>
+
+  <h2>7. Quick checks</h2>
+  <ol>
+    <li>
+      On the base PC:
+      <span class="mono">netstat -an | findstr 2101</span> → should show
+      <span class="mono">LISTENING</span>
+    </li>
+    <li>
+      From a rover on Tailscale: fetch the source table against
+      <span class="mono">100.x.y.z:2101</span> and confirm mountpoint <span class="mono">BASE</span>
+    </li>
+    <li>
+      Rover should receive RTCM. Fix quality depends on baseline, base coordinates, and message
+      set — not on Tailscale itself.
+    </li>
+  </ol>
+
+  <h2>8. Practical notes</h2>
+  <ul>
+    <li>
+      <strong>Why Tailscale:</strong> rovers reach <span class="mono">100.x.y.z:2101</span> with no
+      router port-forward, CGNAT, or public IP. Prefer Tailscale-only exposure when possible.
+    </li>
+    <li>
+      <strong>Auth:</strong> use <span class="mono">user:pass</span> on
+      <span class="mono">ntripc://</span>; Tailscale ACLs can further restrict which devices may
+      talk to the base.
+    </li>
+    <li>
+      <strong>Persistence:</strong> put the <span class="mono">str2str</span> command in a
+      <span class="mono">.bat</span> file and run it at login, or schedule it with Task Scheduler
+      so it restarts on failure.
+    </li>
+    <li>
+      <strong>Multiple rovers:</strong> the Demo5 caster can serve several clients from one
+      serial/TCP input. Do <strong>not</strong> fan out a VRS stream this way.
+    </li>
+    <li>
+      <strong>Base must stay fixed:</strong> wrong 1005/1006 position produces wrong RTK
+      solutions even if the caster appears to work.
+    </li>
+  </ul>
+
+  <div class="note">
+    <strong>Requirement:</strong> Use the rtkexplorer / Demo5 build of RTKLIB. Other RTKLIB
+    packages often include NTRIP client/server push only, not a local caster
+    (<span class="mono">ntripc://</span>).
+  </div>
+
+  <div class="footer">
+    Generated from the suggested Windows 11 + RTKLIB NTRIP caster + Tailscale workflow.
+  </div>
+</body>
+</html>
